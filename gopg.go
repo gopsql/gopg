@@ -2,6 +2,8 @@ package gopg
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -215,6 +217,23 @@ func (q *queryRows) Close() error {
 		close(q.nextChan)
 	}
 	return nil // step 13
+}
+
+func (q *queryRows) Columns() (columns []string, err error) {
+	stmt, err := q.db.DB.Prepare(q.query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if recover() != nil {
+			err = errors.New("failed to get columns")
+		}
+	}()
+	cols := reflect.ValueOf(*stmt).FieldByName("columns")
+	for i := 0; i < cols.Len(); i++ {
+		columns = append(columns, cols.Index(i).FieldByName("Name").String())
+	}
+	return
 }
 
 func (q *queryRows) Err() error {
