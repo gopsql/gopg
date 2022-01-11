@@ -220,9 +220,14 @@ func (q *queryRows) Close() error {
 }
 
 func (q *queryRows) Columns() (columns []string, err error) {
-	stmt, err := q.db.DB.Prepare(q.query)
+	var stmt *pg.Stmt
+	if q.tx != nil {
+		stmt, err = q.tx.Tx.Prepare(q.query)
+	} else {
+		stmt, err = q.db.DB.Prepare(q.query)
+	}
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer func() {
 		if recover() != nil {
