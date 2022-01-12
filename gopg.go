@@ -79,6 +79,14 @@ type (
 	}
 )
 
+var (
+	_ db.DB     = (*DB)(nil)
+	_ db.Tx     = (*Tx)(nil)
+	_ db.Result = (*Result)(nil)
+	_ db.Rows   = (*queryRows)(nil)
+	_ db.Row    = (*queryRow)(nil)
+)
+
 // MustOpen is like Open but panics if connect operation fails.
 func MustOpen(conn string) db.DB {
 	c, err := Open(conn)
@@ -113,7 +121,11 @@ func (d *DB) ConvertParameters(query string, args []interface{}) (outQuery strin
 }
 
 func (d *DB) Exec(query string, args ...interface{}) (db.Result, error) {
-	re, err := d.DB.Exec(query, args...)
+	return d.ExecContext(d.DB.Context(), query, args...)
+}
+
+func (d *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (db.Result, error) {
+	re, err := d.DB.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -123,22 +135,33 @@ func (d *DB) Exec(query string, args ...interface{}) (db.Result, error) {
 }
 
 func (d *DB) Query(query string, args ...interface{}) (db.Rows, error) {
+	return d.QueryContext(d.DB.Context(), query, args...)
+}
+
+func (d *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (db.Rows, error) {
 	return &queryRows{
 		db:    d,
+		ctx:   ctx,
 		query: query,
 		args:  args,
 	}, nil
 }
 
 func (d *DB) QueryRow(query string, args ...interface{}) db.Row {
+	return d.QueryRowContext(d.DB.Context(), query, args...)
+}
+
+func (d *DB) QueryRowContext(ctx context.Context, query string, args ...interface{}) db.Row {
 	return &queryRow{
 		db:    d,
+		ctx:   ctx,
 		query: query,
 		args:  args,
 	}
 }
 
-func (d *DB) BeginTx(ctx context.Context, isolationLevel string) (db.Tx, error) {
+func (d *DB) BeginTx(ctx context.Context, isolationLevel string, readOnly bool) (db.Tx, error) {
+	// TODO run Exec("SET TRANSACTION ...") here because go-pg doesn't have BeginTx(TxOptions)
 	tx, err := d.DB.BeginContext(ctx)
 	if err != nil {
 		return nil, err
@@ -274,7 +297,7 @@ func (q *queryRows) Next() bool {
 			if q.tx != nil {
 				_, err = q.tx.Tx.QueryContext(q.ctx, q, q.query, q.args...)
 			} else {
-				_, err = q.db.DB.Query(q, q.query, q.args...) // step 1
+				_, err = q.db.DB.QueryContext(q.ctx, q, q.query, q.args...) // step 1
 			}
 			if !q.isClosed() {
 				q.nextChan <- false // step 9
@@ -340,7 +363,7 @@ func (q *queryRow) Scan(dest ...interface{}) (err error) {
 	if q.tx != nil {
 		_, err = q.tx.Tx.QueryOneContext(q.ctx, pg.Scan(dest...), q.query, q.args...)
 	} else {
-		_, err = q.db.DB.QueryOne(pg.Scan(dest...), q.query, q.args...)
+		_, err = q.db.DB.QueryOneContext(q.ctx, pg.Scan(dest...), q.query, q.args...)
 	}
 	return
 }
