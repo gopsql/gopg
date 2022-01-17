@@ -120,6 +120,10 @@ func (d *DB) ConvertParameters(query string, args []interface{}) (outQuery strin
 	return
 }
 
+func (d *DB) DriverName() string {
+	return "postgres"
+}
+
 func (d *DB) Exec(query string, args ...interface{}) (db.Result, error) {
 	return d.ExecContext(d.DB.Context(), query, args...)
 }
